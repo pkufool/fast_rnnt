@@ -9,7 +9,7 @@ to build this project"
   )
 endif()
 
-cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.10 FATAL_ERROR)
 
 set(CMAKE_DISABLE_FIND_PACKAGE_MKL TRUE)
 set(languages CXX)

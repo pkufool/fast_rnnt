@@ -107,6 +107,7 @@ jobs:
         if: matrix.cuda
         uses: Jimver/cuda-toolkit@v0.2.24
         with:
+          method: network
           cuda: "12.1.1"
           sub-packages: >-
             ["nvcc", "cudart", "curand", "cusparse", "cublas"]
@@ -140,10 +141,21 @@ jobs:
         run: |
           bash .github/scripts/install_torch_for_wheels.sh
 
+      - name: Prepare CMake args
+        shell: bash
+        run: |
+          if [[ "${{ matrix.os }}" == "windows" ]]; then
+            echo "FT_CMAKE_ARGS=-GNinja -DCMAKE_BUILD_TYPE=Release -DFT_BUILD_TESTS=OFF -DFT_WITH_CUDA=ON" >> "$GITHUB_ENV"
+            echo "CUDACXX=$CUDA_PATH/bin/nvcc.exe" >> "$GITHUB_ENV"
+          elif [[ "${{ matrix.cuda }}" == "true" ]]; then
+            echo "FT_CMAKE_ARGS=-DCMAKE_BUILD_TYPE=Release -DFT_BUILD_TESTS=OFF -DFT_WITH_CUDA=ON" >> "$GITHUB_ENV"
+          else
+            echo "FT_CMAKE_ARGS=-DCMAKE_BUILD_TYPE=Release -DFT_BUILD_TESTS=OFF -DFT_WITH_CUDA=OFF" >> "$GITHUB_ENV"
+          fi
+
       - name: Build wheel
         shell: bash
         env:
-          FT_CMAKE_ARGS: ${{ matrix.cuda && '-DCMAKE_BUILD_TYPE=Release -DFT_BUILD_TESTS=OFF -DFT_WITH_CUDA=ON' || '-DCMAKE_BUILD_TYPE=Release -DFT_BUILD_TESTS=OFF -DFT_WITH_CUDA=OFF' }}
           FT_TORCH_REQUIREMENT: torch>=2.4,<2.5
           CMAKE_BUILD_PARALLEL_LEVEL: 2
         run: |
@@ -153,11 +165,7 @@ jobs:
         shell: bash
         run: |
           python -m pip install --force-reinstall dist/*.whl
-          python - <<'PY'
-          import fast_rnnt
-          print('fast_rnnt version:', fast_rnnt.__version__)
-          print('fast_rnnt has cuda:', fast_rnnt.with_cuda)
-          PY
+          python -c "import fast_rnnt; print('fast_rnnt version:', fast_rnnt.__version__); print('fast_rnnt has cuda:', fast_rnnt.with_cuda)"
 
       - name: Upload wheel artifacts
         uses: actions/upload-artifact@v4
