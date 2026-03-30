@@ -6,6 +6,7 @@ import glob
 import os
 import re
 import shutil
+import subprocess
 import sys
 
 import setuptools
@@ -38,41 +39,66 @@ class BuildExtension(build_ext):
         if cmake_args == "":
             cmake_args = "-DCMAKE_BUILD_TYPE=Release -DFT_BUILD_TESTS=OFF"
 
-        if make_args == "" and system_make_args == "":
+        if make_args == "" and system_make_args == "" and os.name != "nt":
             make_args = " -j "
 
         if "PYTHON_EXECUTABLE" not in cmake_args:
             print(f"Setting PYTHON_EXECUTABLE to {sys.executable}")
             cmake_args += f" -DPYTHON_EXECUTABLE={sys.executable}"
 
-        build_cmd = f"""
-            cd {self.build_temp}
+        config = "Debug" if self.debug else "Release"
+        cmake_cmd = ["cmake"] + cmake_args.split() + [ft_dir]
+        print(f"Running configure command: {' '.join(cmake_cmd)}")
 
-            cmake {cmake_args} {ft_dir}
+        try:
+            subprocess.check_call(cmake_cmd, cwd=self.build_temp)
 
-            make {make_args} _fast_rnnt
-        """
-        print(f"build command is:\n{build_cmd}")
+            build_cmd = ["cmake", "--build", ".", "--target", "_fast_rnnt"]
+            if os.name == "nt":
+                # Multi-config generators (e.g. Visual Studio) need --config.
+                build_cmd.extend(["--config", config])
 
-        ret = os.system(build_cmd)
-        if ret != 0:
+            if make_args != "":
+                build_cmd.extend(["--", *make_args.split()])
+
+            print(f"Running build command: {' '.join(build_cmd)}")
+            subprocess.check_call(build_cmd, cwd=self.build_temp)
+        except subprocess.CalledProcessError as e:
             raise Exception(
                 "\nBuild fast_rnnt failed. Please check the error "
                 "message.\n"
                 "You can ask for help by creating an issue on GitHub.\n"
                 "\nClick:\n"
                 "\thttps://github.com/danpovey/fast_rnnt/issues/new\n"  # noqa
-            )
-        lib_so = glob.glob(f"{build_dir}/lib/*.so*")
-        for so in lib_so:
-            print(f"Copying {so} to {self.build_lib}/")
-            shutil.copy(f"{so}", f"{self.build_lib}/")
+            ) from e
 
-        # macos
-        lib_so = glob.glob(f"{build_dir}/lib/*.dylib*")
-        for so in lib_so:
-            print(f"Copying {so} to {self.build_lib}/")
-            shutil.copy(f"{so}", f"{self.build_lib}/")
+        # Copy generated extension module into wheel lib dir.
+        patterns = ["*.so", "*.so.*", "*.dylib", "*.pyd", "*.dll"]
+        copied = False
+        for pattern in patterns:
+            for lib in glob.glob(f"{build_dir}/lib/{pattern}"):
+                if "_fast_rnnt" not in os.path.basename(lib):
+                    continue
+                print(f"Copying {lib} to {self.build_lib}/")
+                shutil.copy(lib, self.build_lib)
+                copied = True
+
+        if not copied:
+            candidates = []
+            for pattern in patterns:
+                candidates.extend(glob.glob(f"{build_dir}/**/{pattern}", recursive=True))
+
+            for lib in candidates:
+                if "_fast_rnnt" not in os.path.basename(lib):
+                    continue
+                print(f"Copying {lib} to {self.build_lib}/")
+                shutil.copy(lib, self.build_lib)
+                copied = True
+
+        if not copied:
+            raise RuntimeError(
+                "Failed to locate built extension _fast_rnnt in build directory."
+            )
 
 
 def read_long_description():
@@ -93,6 +119,11 @@ def get_package_version():
 def get_requirements():
     with open("requirements.txt", encoding="utf8") as f:
         requirements = f.read().splitlines()
+
+    torch_requirement = os.environ.get("FT_TORCH_REQUIREMENT", "").strip()
+    if torch_requirement:
+        requirements = [r for r in requirements if not r.strip().startswith("torch")]
+        requirements.append(torch_requirement)
 
     return requirements
 

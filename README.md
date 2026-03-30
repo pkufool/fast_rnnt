@@ -77,6 +77,16 @@ pip install --verbose fast_rnnt
 
 It will pass `-DCMAKE_BUILD_TYPE=Release -DFT_WITH_CUDA=OFF` to `cmake`.
 
+### Prebuilt wheels (PyPI)
+
+`fast_rnnt` now provides prebuilt wheels published from GitHub Actions.
+
+- Linux/Windows wheels are built against CUDA-enabled PyTorch wheels from
+    `https://download.pytorch.org/whl/cu121`
+- macOS wheels are built against CPU PyTorch wheels from
+    `https://download.pytorch.org/whl/cpu`
+
+
 ### Where to get help if I have problems with the installation ?
 
 Please file an issue at <https://github.com/danpovey/fast_rnnt/issues>

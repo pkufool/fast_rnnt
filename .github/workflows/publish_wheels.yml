@@ -1,0 +1,192 @@
+name: publish-wheels
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish wheels to PyPI
+        required: true
+        type: boolean
+        default: false
+      torch-version:
+        description: PyTorch version used for wheel build
+        required: true
+        type: string
+        default: "2.4.1"
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: publish-wheels-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-wheels:
+    name: ${{ matrix.os }}-py${{ matrix.python-version }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runner: ubuntu-22.04
+            python-version: "3.9"
+            torch-index: cu121
+            cuda: true
+          - os: linux
+            runner: ubuntu-22.04
+            python-version: "3.10"
+            torch-index: cu121
+            cuda: true
+          - os: linux
+            runner: ubuntu-22.04
+            python-version: "3.11"
+            torch-index: cu121
+            cuda: true
+          - os: linux
+            runner: ubuntu-22.04
+            python-version: "3.12"
+            torch-index: cu121
+            cuda: true
+          - os: windows
+            runner: windows-2022
+            python-version: "3.9"
+            torch-index: cu121
+            cuda: true
+          - os: windows
+            runner: windows-2022
+            python-version: "3.10"
+            torch-index: cu121
+            cuda: true
+          - os: windows
+            runner: windows-2022
+            python-version: "3.11"
+            torch-index: cu121
+            cuda: true
+          - os: windows
+            runner: windows-2022
+            python-version: "3.12"
+            torch-index: cu121
+            cuda: true
+          - os: macos
+            runner: macos-14
+            python-version: "3.9"
+            torch-index: cpu
+            cuda: false
+          - os: macos
+            runner: macos-14
+            python-version: "3.10"
+            torch-index: cpu
+            cuda: false
+          - os: macos
+            runner: macos-14
+            python-version: "3.11"
+            torch-index: cpu
+            cuda: false
+          - os: macos
+            runner: macos-14
+            python-version: "3.12"
+            torch-index: cpu
+            cuda: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Setup MSVC (Windows)
+        if: matrix.os == 'windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install CUDA toolkit
+        if: matrix.cuda
+        uses: Jimver/cuda-toolkit@v0.2.24
+        with:
+          cuda: "12.1.1"
+          sub-packages: >-
+            ["nvcc", "cudart", "curand", "cusparse", "cublas"]
+
+      - name: Configure CUDA env (Linux)
+        if: matrix.cuda && matrix.os == 'linux'
+        shell: bash
+        run: |
+          echo "CUDA_HOME=$CUDA_PATH" >> "$GITHUB_ENV"
+          echo "$CUDA_PATH/bin" >> "$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=$CUDA_PATH/lib64:$LD_LIBRARY_PATH" >> "$GITHUB_ENV"
+
+      - name: Configure CUDA env (Windows)
+        if: matrix.cuda && matrix.os == 'windows'
+        shell: bash
+        run: |
+          echo "CUDA_HOME=$CUDA_PATH" >> "$GITHUB_ENV"
+          echo "$CUDA_PATH/bin" >> "$GITHUB_PATH"
+
+      - name: Install build tools
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build setuptools wheel cmake ninja
+
+      - name: Install PyTorch
+        shell: bash
+        env:
+          TORCH_VERSION: ${{ github.event.inputs['torch-version'] || '2.4.1' }}
+          TORCH_INDEX: ${{ matrix.torch-index }}
+        run: |
+          bash .github/scripts/install_torch_for_wheels.sh
+
+      - name: Build wheel
+        shell: bash
+        env:
+          FT_CMAKE_ARGS: ${{ matrix.cuda && '-DCMAKE_BUILD_TYPE=Release -DFT_BUILD_TESTS=OFF -DFT_WITH_CUDA=ON' || '-DCMAKE_BUILD_TYPE=Release -DFT_BUILD_TESTS=OFF -DFT_WITH_CUDA=OFF' }}
+          FT_TORCH_REQUIREMENT: torch>=2.4,<2.5
+          CMAKE_BUILD_PARALLEL_LEVEL: 2
+        run: |
+          python -m build --wheel --no-isolation
+
+      - name: Verify wheel import
+        shell: bash
+        run: |
+          python -m pip install --force-reinstall dist/*.whl
+          python - <<'PY'
+import fast_rnnt
+print('fast_rnnt version:', fast_rnnt.__version__)
+print('fast_rnnt has cuda:', fast_rnnt.with_cuda)
+PY
+
+      - name: Upload wheel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: [build-wheels]
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.publish)
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: wheels-*
+          merge-multiple: true
+
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          twine upload dist/*
