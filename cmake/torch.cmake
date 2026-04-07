@@ -21,7 +21,6 @@ if(OT_WITH_CUDA)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} ${TORCH_CXX_FLAGS}")
 endif()
 
-
 execute_process(
   COMMAND "${PYTHON_EXECUTABLE}" -c "import torch; print(torch.__version__.split('.')[0])"
   OUTPUT_STRIP_TRAILING_WHITESPACE

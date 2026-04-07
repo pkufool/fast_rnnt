@@ -114,7 +114,7 @@ jobs:
       - name: Build wheel
         env:
           FT_CMAKE_ARGS: "-DCMAKE_BUILD_TYPE=Release -DFT_BUILD_TESTS=OFF -DFT_WITH_CUDA=ON"
-          FT_TORCH_REQUIREMENT: "torch>=2.0.0"
+          FT_TORCH_REQUIREMENT: "torch==${{ env.TORCH_VERSION }}"
           CMAKE_BUILD_PARALLEL_LEVEL: "2"
         run: |
           export PATH="${PYTHON_BIN}:${PATH}"
@@ -139,7 +139,9 @@ jobs:
 
       - name: Verify wheel
         run: |
-          ${PYTHON_BIN}/python -m pip install --force-reinstall dist/*.whl
+          cuda_tag=$(echo "${CUDA_VER}" | tr -d '.')
+          index_url="https://download.pytorch.org/whl/cu${cuda_tag}"
+          ${PYTHON_BIN}/python -m pip install --force-reinstall dist/*.whl "torch==${TORCH_VERSION}" --index-url "${index_url}"
           ${PYTHON_BIN}/python -c "import fast_rnnt; print('version:', fast_rnnt.__version__); print('cuda:', fast_rnnt.with_cuda)"
 
       - name: Upload artifact
