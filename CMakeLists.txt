@@ -91,34 +91,18 @@ if(FT_WITH_CUDA)
   unset(CMAKE_CUDA_STANDARD CACHE)
   set(CMAKE_CUDA_STANDARD ${CMAKE_CXX_STANDARD})
 
-  include(cmake/select_compute_arch.cmake)
-  cuda_select_nvcc_arch_flags(FT_COMPUTE_ARCH_FLAGS)
-  message(STATUS "FT_COMPUTE_ARCH_FLAGS: ${FT_COMPUTE_ARCH_FLAGS}")
-
-  # set(OT_COMPUTE_ARCHS 30 32 35 50 52 53 60 61 62 70 72)
-  # message(WARNING "arch 62/72 are not supported for now")
-
-  # see https://arnon.dk/matching-sm-architectures-arch-and-gencode-for-various-nvidia-cards/
-  # https://www.myzhar.com/blog/tutorials/tutorial-nvidia-gpu-cuda-compute-capability/
-  set(FT_COMPUTE_ARCH_CANDIDATES 35 50 60 61 70 75)
-  if(CUDA_VERSION VERSION_GREATER "11.0")
-    list(APPEND FT_COMPUTE_ARCH_CANDIDATES 80 86)
-  endif()
-  message(STATUS "FT_COMPUTE_ARCH_CANDIDATES ${FT_COMPUTE_ARCH_CANDIDATES}")
-
   set(FT_COMPUTE_ARCHS)
 
-  foreach(COMPUTE_ARCH IN LISTS FT_COMPUTE_ARCH_CANDIDATES)
-    if("${FT_COMPUTE_ARCH_FLAGS}" MATCHES ${COMPUTE_ARCH})
-      message(STATUS "Adding arch ${COMPUTE_ARCH}")
-      list(APPEND FT_COMPUTE_ARCHS ${COMPUTE_ARCH})
-    else()
-      message(STATUS "Skipping arch ${COMPUTE_ARCH}")
+  if(CUDA_VERSION VERSION_GREATER_EQUAL "12.0")
+    # CUDA 12.x dropped support for compute < 5.0
+    set(FT_COMPUTE_ARCHS 50 60 61 70 75 80 86)
+    if(CUDA_VERSION VERSION_GREATER_EQUAL "11.8")
+      list(APPEND FT_COMPUTE_ARCHS 89 90)
     endif()
-  endforeach()
-
-  if(NOT FT_COMPUTE_ARCHS)
-    set(FT_COMPUTE_ARCHS ${FT_COMPUTE_ARCH_CANDIDATES})
+  elseif(CUDA_VERSION VERSION_GREATER_EQUAL "11.0")
+    set(FT_COMPUTE_ARCHS 35 50 60 61 70 75 80 86)
+  else()
+    set(FT_COMPUTE_ARCHS 35 50 60 61 70 75)
   endif()
 
   message(STATUS "FT_COMPUTE_ARCHS: ${FT_COMPUTE_ARCHS}")
@@ -127,6 +111,8 @@ if(FT_WITH_CUDA)
     set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-extended-lambda -gencode arch=compute_${COMPUTE_ARCH},code=sm_${COMPUTE_ARCH}")
     set(CMAKE_CUDA_ARCHITECTURES "${COMPUTE_ARCH}-real;${COMPUTE_ARCH}-virtual;${CMAKE_CUDA_ARCHITECTURES}")
   endforeach()
+
+  message(STATUS "FT_COMPUTE_ARCHS: ${FT_COMPUTE_ARCHS}")
 endif()
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/Modules)
