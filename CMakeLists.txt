@@ -16,7 +16,7 @@ set(languages CXX)
 set(_FT_WITH_CUDA ON)
 
 # the following settings are modified from cub/CMakeLists.txt
-set(CMAKE_CXX_STANDARD 14 CACHE STRING "The C++ version to be used.")
+set(CMAKE_CXX_STANDARD 17 CACHE STRING "The C++ version to be used.")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
