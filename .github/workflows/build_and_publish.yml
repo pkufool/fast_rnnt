@@ -56,7 +56,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
+      - name: Install compatible GCC
+        run: |
+          dnf install -y gcc-toolset-13-gcc gcc-toolset-13-gcc-c++
+          echo "CC=/opt/rh/gcc-toolset-13/root/usr/bin/gcc" >> "$GITHUB_ENV"
+          echo "CXX=/opt/rh/gcc-toolset-13/root/usr/bin/g++" >> "$GITHUB_ENV"
+          echo "CUDAHOSTCXX=/opt/rh/gcc-toolset-13/root/usr/bin/g++" >> "$GITHUB_ENV"
       - name: Install CUDA toolkit
         shell: bash
         run: |
