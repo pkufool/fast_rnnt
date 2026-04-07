@@ -13,3 +13,8 @@ from .rnnt_loss import rnnt_loss
 from .rnnt_loss import rnnt_loss_pruned
 from .rnnt_loss import rnnt_loss_simple
 from .rnnt_loss import rnnt_loss_smoothed
+
+try:
+    from ._version import __version__
+except ImportError:
+    __version__ = "unknown"

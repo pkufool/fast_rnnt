@@ -100,6 +100,14 @@ class BuildExtension(build_ext):
                 "Failed to locate built extension _fast_rnnt in build directory."
             )
 
+        # Write _version.py into the build directory (not source tree)
+        version = get_package_version()
+        pkg_build_dir = os.path.join(self.build_lib, package_name)
+        os.makedirs(pkg_build_dir, exist_ok=True)
+        version_file = os.path.join(pkg_build_dir, "_version.py")
+        with open(version_file, "w") as f:
+            f.write(f'__version__ = "{version}"\n')
+
 
 def read_long_description():
     with open("README.md", encoding="utf8") as f:
@@ -130,19 +138,16 @@ def get_requirements():
 
 package_name = "fast_rnnt"
 
-with open("fast_rnnt/python/fast_rnnt/__init__.py", "a") as f:
-    f.write(f"__version__ = '{get_package_version()}'\n")
-
 setuptools.setup(
     name=package_name,
     version=get_package_version(),
-    author="Dan Povey",
-    author_email="dpovey@gmail.com",
+    author="Next-gen Kaldi Team",
+    author_email="wkang@pku.edu.cn",
     package_dir={
         package_name: "fast_rnnt/python/fast_rnnt",
     },
     packages=[package_name],
-    url="https://github.com/danpovey/fast_rnnt",
+    url="https://github.com/k2-fsa/fast_rnnt",
     description="Fast and memory-efficient RNN-T loss.",
     long_description=read_long_description(),
     long_description_content_type="text/markdown",
