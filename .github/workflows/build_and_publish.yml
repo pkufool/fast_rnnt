@@ -60,8 +60,6 @@ jobs:
       - name: Install CUDA toolkit
         shell: bash
         run: |
-          yum install -y gcc gcc-c++
-          
           cuda_ver="${CUDA_VER}"
           echo "Installing CUDA ${cuda_ver}"
 
@@ -88,7 +86,7 @@ jobs:
           curl -LSs -O "${url}"
           filename=$(basename "${url}")
           chmod +x "./${filename}"
-          "./${filename}" --toolkit --silent --no-opengl-libs
+          "./${filename}" --toolkit --silent --no-opengl-libs --override
           rm -f "./${filename}"
 
           echo "CUDA_HOME=/usr/local/cuda" >> "$GITHUB_ENV"
