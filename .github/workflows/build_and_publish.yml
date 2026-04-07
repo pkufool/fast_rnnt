@@ -60,6 +60,8 @@ jobs:
       - name: Install CUDA toolkit
         shell: bash
         run: |
+          yum install -y gcc gcc-c++
+          
           cuda_ver="${CUDA_VER}"
           echo "Installing CUDA ${cuda_ver}"
 
