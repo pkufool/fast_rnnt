@@ -132,6 +132,9 @@ endif()
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/Modules)
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 
+find_package(Python COMPONENTS Interpreter Development REQUIRED)
+set(PYTHON_LIBRARY ${Python_LIBRARIES})
+
 include(pybind11)
 include(torch)
 
