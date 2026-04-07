@@ -24,7 +24,7 @@ if(APPLE)
 elseif(UNIX)
   target_link_libraries(_fast_rnnt
     PRIVATE
-      ${PYTHON_LIBRARY}
+      # ${PYTHON_LIBRARY}
       ${TORCH_DIR}/lib/libtorch_python.so
   )
 endif()
