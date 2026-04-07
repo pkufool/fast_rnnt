@@ -1,0 +1,288 @@
+name: build-and-publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish wheels to PyPI
+        required: true
+        type: boolean
+        default: false
+      torch-version:
+        description: PyTorch version
+        required: true
+        type: string
+        default: "2.6.0"
+      cuda-version:
+        description: "CUDA version (e.g. 12.4)"
+        required: true
+        type: string
+        default: "12.4"
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: build-and-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TORCH_VERSION: ${{ github.event.inputs['torch-version'] || '2.6.0' }}
+  CUDA_VER: ${{ github.event.inputs['cuda-version'] || '12.4' }}
+
+jobs:
+  build-linux:
+    name: linux-py${{ matrix.python-version }}
+    runs-on: ubuntu-22.04
+    container:
+      image: quay.io/pypa/manylinux_2_28_x86_64
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        include:
+          - python-version: "3.9"
+            python-tag: cp39-cp39
+          - python-version: "3.10"
+            python-tag: cp310-cp310
+          - python-version: "3.11"
+            python-tag: cp311-cp311
+          - python-version: "3.12"
+            python-tag: cp312-cp312
+          - python-version: "3.13"
+            python-tag: cp313-cp313
+    env:
+      PYTHON_BIN: /opt/python/${{ matrix.python-tag }}/bin
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install CUDA toolkit
+        shell: bash
+        run: |
+          cuda_ver="${CUDA_VER}"
+          echo "Installing CUDA ${cuda_ver}"
+
+          # CUDA runfile URLs
+          case "${cuda_ver}" in
+            11.8)
+              url=https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda_11.8.0_520.61.05_linux.run
+              ;;
+            12.1)
+              url=https://developer.download.nvidia.com/compute/cuda/12.1.1/local_installers/cuda_12.1.1_530.30.02_linux.run
+              ;;
+            12.4)
+              url=https://developer.download.nvidia.com/compute/cuda/12.4.1/local_installers/cuda_12.4.1_550.54.15_linux.run
+              ;;
+            12.6)
+              url=https://developer.download.nvidia.com/compute/cuda/12.6.3/local_installers/cuda_12.6.3_560.35.05_linux.run
+              ;;
+            *)
+              echo "Unsupported CUDA version: ${cuda_ver}"
+              exit 1
+              ;;
+          esac
+
+          curl -LSs -O "${url}"
+          filename=$(basename "${url}")
+          chmod +x "./${filename}"
+          "./${filename}" --toolkit --silent --no-opengl-libs
+          rm -f "./${filename}"
+
+          echo "CUDA_HOME=/usr/local/cuda" >> "$GITHUB_ENV"
+          echo "/usr/local/cuda/bin" >> "$GITHUB_PATH"
+
+      - name: Install build tools
+        run: |
+          ${PYTHON_BIN}/python -m pip install --upgrade pip
+          ${PYTHON_BIN}/python -m pip install build setuptools wheel cmake ninja auditwheel
+
+      - name: Install PyTorch
+        shell: bash
+        run: |
+          cuda_tag=$(echo "${CUDA_VER}" | tr -d '.')
+          index_url="https://download.pytorch.org/whl/cu${cuda_tag}"
+          echo "Installing torch==${TORCH_VERSION} from ${index_url}"
+          ${PYTHON_BIN}/python -m pip install "torch==${TORCH_VERSION}" --index-url "${index_url}"
+          ${PYTHON_BIN}/python -c "import torch; print('torch:', torch.__version__, 'cuda:', torch.version.cuda)"
+
+      - name: Build wheel
+        env:
+          FT_CMAKE_ARGS: "-DCMAKE_BUILD_TYPE=Release -DFT_BUILD_TESTS=OFF -DFT_WITH_CUDA=ON"
+          FT_TORCH_REQUIREMENT: "torch>=2.0.0"
+          CMAKE_BUILD_PARALLEL_LEVEL: "2"
+        run: |
+          export PATH="${PYTHON_BIN}:${PATH}"
+          python -m build --wheel --no-isolation
+
+      - name: Repair wheel (manylinux tag)
+        run: |
+          ${PYTHON_BIN}/python -m auditwheel repair dist/*.whl \
+            --exclude libtorch.so \
+            --exclude libtorch_cpu.so \
+            --exclude libtorch_cuda.so \
+            --exclude libtorch_python.so \
+            --exclude libc10.so \
+            --exclude libc10_cuda.so \
+            --exclude libcudart.so \
+            --exclude libnvToolsExt.so \
+            --exclude libcudnn.so \
+            --exclude libnvrtc.so \
+            -w repaired/
+          rm -rf dist/
+          mv repaired/ dist/
+
+      - name: Verify wheel
+        run: |
+          ${PYTHON_BIN}/python -m pip install --force-reinstall dist/*.whl
+          ${PYTHON_BIN}/python -c "import fast_rnnt; print('version:', fast_rnnt.__version__); print('cuda:', fast_rnnt.with_cuda)"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-linux-py${{ matrix.python-version }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  build-windows:
+    name: windows-py${{ matrix.python-version }}
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install CUDA toolkit
+        uses: Jimver/cuda-toolkit@v0.2.24
+        with:
+          method: network
+          cuda: "${{ env.CUDA_VER }}.1"
+
+      - name: Configure CUDA env
+        shell: bash
+        run: |
+          echo "CUDA_HOME=$CUDA_PATH" >> "$GITHUB_ENV"
+          echo "$CUDA_PATH/bin" >> "$GITHUB_PATH"
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build setuptools wheel cmake ninja
+
+      - name: Install PyTorch
+        shell: bash
+        run: |
+          cuda_tag=$(echo "$CUDA_VER" | tr -d '.')
+          index_url="https://download.pytorch.org/whl/cu${cuda_tag}"
+          echo "Installing torch==${TORCH_VERSION} from ${index_url}"
+          python -m pip install "torch==${TORCH_VERSION}" --index-url "${index_url}"
+          python -c "import torch; print('torch:', torch.__version__, 'cuda:', torch.version.cuda)"
+
+      - name: Build wheel
+        shell: bash
+        env:
+          FT_CMAKE_ARGS: "-GNinja -DCMAKE_BUILD_TYPE=Release -DFT_BUILD_TESTS=OFF -DFT_WITH_CUDA=ON"
+          CUDACXX: "${{ env.CUDA_PATH }}\\bin\\nvcc.exe"
+          FT_TORCH_REQUIREMENT: "torch>=2.0.0"
+          CMAKE_BUILD_PARALLEL_LEVEL: "2"
+        run: |
+          python -m build --wheel --no-isolation
+
+      - name: Verify wheel
+        shell: bash
+        run: |
+          python -m pip install --force-reinstall dist/*.whl
+          python -c "import fast_rnnt; print('version:', fast_rnnt.__version__); print('cuda:', fast_rnnt.with_cuda)"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-windows-py${{ matrix.python-version }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  build-macos:
+    name: macos-py${{ matrix.python-version }}
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build setuptools wheel cmake ninja
+
+      - name: Install PyTorch
+        run: |
+          python -m pip install "torch==${TORCH_VERSION}" --index-url "https://download.pytorch.org/whl/cpu"
+          python -c "import torch; print('torch:', torch.__version__)"
+
+      - name: Build wheel
+        env:
+          FT_CMAKE_ARGS: "-DCMAKE_BUILD_TYPE=Release -DFT_BUILD_TESTS=OFF -DFT_WITH_CUDA=OFF"
+          FT_TORCH_REQUIREMENT: "torch>=2.0.0"
+          CMAKE_BUILD_PARALLEL_LEVEL: "2"
+        run: |
+          python -m build --wheel --no-isolation
+
+      - name: Verify wheel
+        run: |
+          python -m pip install --force-reinstall dist/*.whl
+          python -c "import fast_rnnt; print('version:', fast_rnnt.__version__); print('cuda:', fast_rnnt.with_cuda)"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-macos-py${{ matrix.python-version }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true')
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download all wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: wheel-*
+          merge-multiple: true
+
+      - name: List wheels
+        run: ls -lh dist/
+
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          python -m pip install --upgrade twine
+          twine upload dist/*.whl
