@@ -8,18 +8,11 @@ execute_process(
 )
 
 list(APPEND CMAKE_PREFIX_PATH "${TORCH_DIR}")
-find_package(Torch REQUIRED)
-
-# PyTorch's CMake config references torch::nvtoolsext in the link interface,
-# but the target may not exist on Windows with CUDA >= 12.
-# NVTX is header-only in CUDA 12+, so we create a dummy imported target.
-if(WIN32 AND NOT TARGET torch::nvtoolsext)
-  add_library(torch::nvtoolsext INTERFACE IMPORTED)
-  if(CUDA_VERSION VERSION_GREATER_EQUAL "12.0")
-    # NVTX3 is header-only in CUDA 12+; no library to link.
-    message(STATUS "Created dummy torch::nvtoolsext target (NVTX is header-only in CUDA 12+)")
-  endif()
+# Add this BEFORE find_package(Torch) in cmake/torch.cmake
+if(WIN32)
+  set(USE_NVTX OFF CACHE BOOL "Disable NVTX to avoid torch::nvtoolsext issues" FORCE)
 endif()
+find_package(Torch REQUIRED)
 
 # set the global CMAKE_CXX_FLAGS so that
 # optimized_transducer uses the same abi flag as PyTorch

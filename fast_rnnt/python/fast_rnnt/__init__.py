@@ -1,3 +1,4 @@
+import torch
 from _fast_rnnt import with_cuda
 
 from .mutual_information import mutual_information_recursion
