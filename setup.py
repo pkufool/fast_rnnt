@@ -102,11 +102,13 @@ class BuildExtension(build_ext):
 
         # Write _version.py into the build directory (not source tree)
         version = get_package_version()
+        version_suffix = os.environ.get("FT_VERSION_SUFFIX", "").strip()
+        full_version = version + version_suffix
         pkg_build_dir = os.path.join(self.build_lib, package_name)
         os.makedirs(pkg_build_dir, exist_ok=True)
         version_file = os.path.join(pkg_build_dir, "_version.py")
         with open(version_file, "w") as f:
-            f.write(f'__version__ = "{version}"\n')
+            f.write(f'__version__ = "{full_version}"\n')
 
 
 def read_long_description():

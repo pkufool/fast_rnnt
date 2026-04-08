@@ -62,6 +62,9 @@ jobs:
       torch_version: ${{ steps.map.outputs.torch_version }}
       cuda_version: ${{ steps.map.outputs.cuda_version }}
       python_matrix: ${{ steps.map.outputs.python_matrix }}
+      torch_pin: ${{ steps.map.outputs.torch_pin }}
+      torch_suffix_linux: ${{ steps.map.outputs.torch_suffix_linux }}
+      torch_suffix_cpu: ${{ steps.map.outputs.torch_suffix_cpu }}
     steps:
       - id: map
         shell: bash
@@ -86,6 +89,9 @@ jobs:
           echo "torch_version=$torch"      >> "$GITHUB_OUTPUT"
           echo "cuda_version=$cuda"        >> "$GITHUB_OUTPUT"
           echo "python_matrix=$py"         >> "$GITHUB_OUTPUT"
+          echo "torch_pin=torch>=${torch%.*}.0,<=${torch}" >> "$GITHUB_OUTPUT"
+          echo "torch_suffix_linux=+torch${torch}_cuda${cuda}" >> "$GITHUB_OUTPUT"
+          echo "torch_suffix_cpu=+torch${torch}_cpu" >> "$GITHUB_OUTPUT"
 
           echo "### Variant $variant" >> "$GITHUB_STEP_SUMMARY"
           echo "- **fast_rnnt** $variant" >> "$GITHUB_STEP_SUMMARY"
@@ -185,7 +191,8 @@ jobs:
       - name: Build wheel
         env:
           FT_CMAKE_ARGS: "-DCMAKE_BUILD_TYPE=Release -DFT_BUILD_TESTS=OFF -DFT_WITH_CUDA=ON"
-          FT_TORCH_REQUIREMENT: "torch==${{ needs.resolve.outputs.torch_version }}"
+          FT_TORCH_REQUIREMENT: "${{ needs.resolve.outputs.torch_pin }}"
+          FT_VERSION_SUFFIX: "${{ needs.resolve.outputs.torch_suffix_linux }}"
           CMAKE_BUILD_PARALLEL_LEVEL: "2"
         run: |
           export PATH="${PYTHON_BIN}:${PATH}"
@@ -264,7 +271,8 @@ jobs:
         shell: bash
         env:
           FT_CMAKE_ARGS: "-GNinja -DCMAKE_BUILD_TYPE=Release -DFT_BUILD_TESTS=OFF -DFT_WITH_CUDA=OFF"
-          FT_TORCH_REQUIREMENT: "torch==${{ needs.resolve.outputs.torch_version }}"
+          FT_TORCH_REQUIREMENT: "${{ needs.resolve.outputs.torch_pin }}"
+          FT_VERSION_SUFFIX: "${{ needs.resolve.outputs.torch_suffix_cpu }}"
           CMAKE_BUILD_PARALLEL_LEVEL: "2"
         run: |
           python -m build --wheel --no-isolation
@@ -318,7 +326,8 @@ jobs:
       - name: Build wheel
         env:
           FT_CMAKE_ARGS: "-DCMAKE_BUILD_TYPE=Release -DFT_BUILD_TESTS=OFF -DFT_WITH_CUDA=OFF"
-          FT_TORCH_REQUIREMENT: "torch==${{ needs.resolve.outputs.torch_version }}"
+          FT_TORCH_REQUIREMENT: "${{ needs.resolve.outputs.torch_pin }}"
+          FT_VERSION_SUFFIX: "${{ needs.resolve.outputs.torch_suffix_cpu }}"
           CMAKE_BUILD_PARALLEL_LEVEL: "2"
         run: |
           python -m build --wheel --no-isolation
