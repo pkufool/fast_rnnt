@@ -17,3 +17,7 @@ add_library(mutual_information_core ${srcs})
 target_link_libraries(mutual_information_core PUBLIC ${TORCH_LIBRARIES})
 # for <torch/extension.h>
 target_include_directories(mutual_information_core PUBLIC ${PYTHON_INCLUDE_DIRS})
+
+if(WIN32)
+  target_link_libraries(mutual_information_core PUBLIC ${PYTHON_LIBRARIES})
+endif()
