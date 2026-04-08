@@ -116,6 +116,10 @@ def read_long_description():
 
 
 def get_package_version():
+    override = os.environ.get("FT_VERSION_OVERRIDE", "").strip()
+    if override:
+        return override
+
     with open("CMakeLists.txt") as f:
         content = f.read()
 

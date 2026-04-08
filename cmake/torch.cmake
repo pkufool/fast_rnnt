@@ -8,9 +8,9 @@ execute_process(
 )
 
 list(APPEND CMAKE_PREFIX_PATH "${TORCH_DIR}")
-# Add this BEFORE find_package(Torch) in cmake/torch.cmake
+
 if(WIN32)
-  set(USE_NVTX OFF CACHE BOOL "Disable NVTX to avoid torch::nvtoolsext issues" FORCE)
+  set(CAFFE2_USE_NVTX OFF CACHE BOOL "" FORCE)
 endif()
 find_package(Torch REQUIRED)
 

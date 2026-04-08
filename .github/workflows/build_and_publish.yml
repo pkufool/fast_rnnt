@@ -3,73 +3,136 @@ name: build-and-publish
 on:
   workflow_dispatch:
     inputs:
+      variant:
+        description: >
+          Package version variant (see version table in workflow comments)
+        required: true
+        type: choice
+        options:
+          - "1.13.1"
+          - "1.13.2"
+          - "1.13.3"
+          - "1.13.4"
+          - "1.13.5"
+          - "1.13.6"
+          - "1.13.7"
+          - "1.13.8"
+          - "1.13.9"
+          - "1.13.10"
+          - "1.13.11"
+          - "1.13.12"
+        default: "1.13.7"
       publish:
         description: Publish wheels to PyPI
         required: true
         type: boolean
         default: false
-      torch-version:
-        description: PyTorch version
-        required: true
-        type: string
-        default: "2.6.0"
-      cuda-version:
-        description: "CUDA version (e.g. 12.4)"
-        required: true
-        type: string
-        default: "12.4"
-  push:
-    tags:
-      - "v*"
+
+# ┌──────────┬─────────┬──────┬─────────────────┐
+# │ Variant  │ PyTorch │ CUDA │ Python           │
+# ├──────────┼─────────┼──────┼─────────────────┤
+# │ 1.13.1   │ 2.0.1   │ 11.7 │ 3.9-3.11        │
+# │ 1.13.2   │ 2.1.2   │ 12.1 │ 3.9-3.11        │
+# │ 1.13.3   │ 2.2.2   │ 12.1 │ 3.9-3.12        │
+# │ 1.13.4   │ 2.3.1   │ 12.1 │ 3.9-3.12        │
+# │ 1.13.5   │ 2.4.1   │ 12.1 │ 3.9-3.12        │
+# │ 1.13.6   │ 2.5.1   │ 12.4 │ 3.9-3.13        │
+# │ 1.13.7   │ 2.6.0   │ 12.4 │ 3.9-3.13        │
+# │ 1.13.8   │ 2.7.1   │ 12.6 │ 3.9-3.13        │
+# │ 1.13.9   │ 2.8.0   │ 12.6 │ 3.9-3.13        │
+# │ 1.13.10  │ 2.9.1   │ 12.8 │ 3.9-3.13        │
+# │ 1.13.11  │ 2.10.0  │ 12.8 │ 3.9-3.13        │
+# │ 1.13.12  │ 2.11.0  │ 13.0 │ 3.9-3.13        │
+# └──────────┴─────────┴──────┴─────────────────┘
+# Linux builds include CUDA; macOS and Windows are CPU-only.
 
 concurrency:
-  group: build-and-publish-${{ github.ref }}
+  group: build-and-publish-${{ github.ref }}-${{ inputs.variant }}
   cancel-in-progress: false
 
-env:
-  TORCH_VERSION: ${{ github.event.inputs['torch-version'] || '2.6.0' }}
-  CUDA_VER: ${{ github.event.inputs['cuda-version'] || '12.4' }}
-
 jobs:
+  # ---------------------------------------------------------------------------
+  # Resolve variant → torch version, CUDA version, python matrix
+  # ---------------------------------------------------------------------------
+  resolve:
+    name: Resolve versions
+    runs-on: ubuntu-latest
+    outputs:
+      ft_version: ${{ steps.map.outputs.ft_version }}
+      torch_version: ${{ steps.map.outputs.torch_version }}
+      cuda_version: ${{ steps.map.outputs.cuda_version }}
+      python_matrix: ${{ steps.map.outputs.python_matrix }}
+    steps:
+      - id: map
+        shell: bash
+        run: |
+          variant="${{ inputs.variant }}"
+          case "$variant" in
+            1.13.1)  torch=2.0.1;  cuda=11.7; py='["3.9","3.10","3.11"]' ;;
+            1.13.2)  torch=2.1.2;  cuda=12.1; py='["3.9","3.10","3.11"]' ;;
+            1.13.3)  torch=2.2.2;  cuda=12.1; py='["3.9","3.10","3.11","3.12"]' ;;
+            1.13.4)  torch=2.3.1;  cuda=12.1; py='["3.9","3.10","3.11","3.12"]' ;;
+            1.13.5)  torch=2.4.1;  cuda=12.1; py='["3.9","3.10","3.11","3.12"]' ;;
+            1.13.6)  torch=2.5.1;  cuda=12.4; py='["3.9","3.10","3.11","3.12","3.13"]' ;;
+            1.13.7)  torch=2.6.0;  cuda=12.4; py='["3.9","3.10","3.11","3.12","3.13"]' ;;
+            1.13.8)  torch=2.7.1;  cuda=12.6; py='["3.9","3.10","3.11","3.12","3.13"]' ;;
+            1.13.9)  torch=2.8.0;  cuda=12.6; py='["3.9","3.10","3.11","3.12","3.13"]' ;;
+            1.13.10) torch=2.9.1;  cuda=12.8; py='["3.9","3.10","3.11","3.12","3.13"]' ;;
+            1.13.11) torch=2.10.0; cuda=12.8; py='["3.9","3.10","3.11","3.12","3.13"]' ;;
+            1.13.12) torch=2.11.0; cuda=13.0; py='["3.9","3.10","3.11","3.12","3.13"]' ;;
+            *) echo "Unknown variant: $variant"; exit 1 ;;
+          esac
+          echo "ft_version=$variant"       >> "$GITHUB_OUTPUT"
+          echo "torch_version=$torch"      >> "$GITHUB_OUTPUT"
+          echo "cuda_version=$cuda"        >> "$GITHUB_OUTPUT"
+          echo "python_matrix=$py"         >> "$GITHUB_OUTPUT"
+
+          echo "### Variant $variant" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **fast_rnnt** $variant" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **PyTorch** $torch" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **CUDA** $cuda" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # Linux — CUDA build
+  # ---------------------------------------------------------------------------
   build-linux:
     name: linux-py${{ matrix.python-version }}
+    needs: resolve
     runs-on: ubuntu-22.04
     container:
       image: quay.io/pypa/manylinux_2_28_x86_64
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
-        include:
-          - python-version: "3.9"
-            python-tag: cp39-cp39
-          - python-version: "3.10"
-            python-tag: cp310-cp310
-          - python-version: "3.11"
-            python-tag: cp311-cp311
-          - python-version: "3.12"
-            python-tag: cp312-cp312
-          - python-version: "3.13"
-            python-tag: cp313-cp313
+        python-version: ${{ fromJSON(needs.resolve.outputs.python_matrix) }}
     env:
-      PYTHON_BIN: /opt/python/${{ matrix.python-tag }}/bin
+      TORCH_VERSION: ${{ needs.resolve.outputs.torch_version }}
+      CUDA_VER: ${{ needs.resolve.outputs.cuda_version }}
+      FT_VERSION_OVERRIDE: ${{ needs.resolve.outputs.ft_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Python path
+        run: |
+          py_nodot=$(echo "${{ matrix.python-version }}" | tr -d '.')
+          echo "PYTHON_BIN=/opt/python/cp${py_nodot}-cp${py_nodot}/bin" >> "$GITHUB_ENV"
+
       - name: Install compatible GCC
         run: |
           dnf install -y gcc-toolset-13-gcc gcc-toolset-13-gcc-c++
-          echo "CC=/opt/rh/gcc-toolset-13/root/usr/bin/gcc" >> "$GITHUB_ENV"
-          echo "CXX=/opt/rh/gcc-toolset-13/root/usr/bin/g++" >> "$GITHUB_ENV"
+          echo "CC=/opt/rh/gcc-toolset-13/root/usr/bin/gcc"       >> "$GITHUB_ENV"
+          echo "CXX=/opt/rh/gcc-toolset-13/root/usr/bin/g++"      >> "$GITHUB_ENV"
           echo "CUDAHOSTCXX=/opt/rh/gcc-toolset-13/root/usr/bin/g++" >> "$GITHUB_ENV"
+
       - name: Install CUDA toolkit
         shell: bash
         run: |
-          cuda_ver="${CUDA_VER}"
-          echo "Installing CUDA ${cuda_ver}"
-
-          # CUDA runfile URLs
-          case "${cuda_ver}" in
+          echo "Installing CUDA ${CUDA_VER}"
+          case "${CUDA_VER}" in
+            11.7)
+              url=https://developer.download.nvidia.com/compute/cuda/11.7.1/local_installers/cuda_11.7.1_515.65.01_linux.run
+              ;;
             11.8)
               url=https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda_11.8.0_520.61.05_linux.run
               ;;
@@ -82,8 +145,16 @@ jobs:
             12.6)
               url=https://developer.download.nvidia.com/compute/cuda/12.6.3/local_installers/cuda_12.6.3_560.35.05_linux.run
               ;;
+            12.8)
+              # TODO: update URL when CUDA 12.8 runfile is available
+              url=https://developer.download.nvidia.com/compute/cuda/12.8.0/local_installers/cuda_12.8.0_570.86.15_linux.run
+              ;;
+            13.0)
+              # TODO: update URL when CUDA 13.0 runfile is available
+              url=https://developer.download.nvidia.com/compute/cuda/13.0.0/local_installers/cuda_13.0.0_linux.run
+              ;;
             *)
-              echo "Unsupported CUDA version: ${cuda_ver}"
+              echo "Unsupported CUDA version: ${CUDA_VER}"
               exit 1
               ;;
           esac
@@ -95,7 +166,7 @@ jobs:
           rm -f "./${filename}"
 
           echo "CUDA_HOME=/usr/local/cuda" >> "$GITHUB_ENV"
-          echo "/usr/local/cuda/bin" >> "$GITHUB_PATH"
+          echo "/usr/local/cuda/bin"        >> "$GITHUB_PATH"
 
       - name: Install build tools
         run: |
@@ -114,7 +185,7 @@ jobs:
       - name: Build wheel
         env:
           FT_CMAKE_ARGS: "-DCMAKE_BUILD_TYPE=Release -DFT_BUILD_TESTS=OFF -DFT_WITH_CUDA=ON"
-          FT_TORCH_REQUIREMENT: "torch==${{ env.TORCH_VERSION }}"
+          FT_TORCH_REQUIREMENT: "torch==${{ needs.resolve.outputs.torch_version }}"
           CMAKE_BUILD_PARALLEL_LEVEL: "2"
         run: |
           export PATH="${PYTHON_BIN}:${PATH}"
@@ -151,13 +222,20 @@ jobs:
           path: dist/*.whl
           if-no-files-found: error
 
+  # ---------------------------------------------------------------------------
+  # Windows — CPU-only build
+  # ---------------------------------------------------------------------------
   build-windows:
     name: windows-py${{ matrix.python-version }}
+    needs: resolve
     runs-on: windows-2022
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        python-version: ${{ fromJSON(needs.resolve.outputs.python_matrix) }}
+    env:
+      TORCH_VERSION: ${{ needs.resolve.outputs.torch_version }}
+      FT_VERSION_OVERRIDE: ${{ needs.resolve.outputs.ft_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -170,18 +248,6 @@ jobs:
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Install CUDA toolkit
-        uses: Jimver/cuda-toolkit@v0.2.24
-        with:
-          method: network
-          cuda: "${{ env.CUDA_VER }}.1"
-
-      - name: Configure CUDA env
-        shell: bash
-        run: |
-          echo "CUDA_HOME=$CUDA_PATH" >> "$GITHUB_ENV"
-          echo "$CUDA_PATH/bin" >> "$GITHUB_PATH"
-
       - name: Install build tools
         run: |
           python -m pip install --upgrade pip
@@ -190,18 +256,15 @@ jobs:
       - name: Install PyTorch
         shell: bash
         run: |
-          cuda_tag=$(echo "$CUDA_VER" | tr -d '.')
-          index_url="https://download.pytorch.org/whl/cu${cuda_tag}"
-          echo "Installing torch==${TORCH_VERSION} from ${index_url}"
-          python -m pip install "torch==${TORCH_VERSION}" --index-url "${index_url}"
-          python -c "import torch; print('torch:', torch.__version__, 'cuda:', torch.version.cuda)"
+          echo "Installing torch==${TORCH_VERSION} (CPU)"
+          python -m pip install "torch==${TORCH_VERSION}" --index-url "https://download.pytorch.org/whl/cpu"
+          python -c "import torch; print('torch:', torch.__version__)"
 
       - name: Build wheel
         shell: bash
         env:
-          FT_CMAKE_ARGS: "-GNinja -DCMAKE_BUILD_TYPE=Release -DFT_BUILD_TESTS=OFF -DFT_WITH_CUDA=ON"
-          CUDACXX: "${{ env.CUDA_PATH }}\\bin\\nvcc.exe"
-          FT_TORCH_REQUIREMENT: "torch>=2.0.0"
+          FT_CMAKE_ARGS: "-GNinja -DCMAKE_BUILD_TYPE=Release -DFT_BUILD_TESTS=OFF -DFT_WITH_CUDA=OFF"
+          FT_TORCH_REQUIREMENT: "torch==${{ needs.resolve.outputs.torch_version }}"
           CMAKE_BUILD_PARALLEL_LEVEL: "2"
         run: |
           python -m build --wheel --no-isolation
@@ -219,13 +282,20 @@ jobs:
           path: dist/*.whl
           if-no-files-found: error
 
+  # ---------------------------------------------------------------------------
+  # macOS — CPU-only build
+  # ---------------------------------------------------------------------------
   build-macos:
     name: macos-py${{ matrix.python-version }}
+    needs: resolve
     runs-on: macos-14
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        python-version: ${{ fromJSON(needs.resolve.outputs.python_matrix) }}
+    env:
+      TORCH_VERSION: ${{ needs.resolve.outputs.torch_version }}
+      FT_VERSION_OVERRIDE: ${{ needs.resolve.outputs.ft_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -248,7 +318,7 @@ jobs:
       - name: Build wheel
         env:
           FT_CMAKE_ARGS: "-DCMAKE_BUILD_TYPE=Release -DFT_BUILD_TESTS=OFF -DFT_WITH_CUDA=OFF"
-          FT_TORCH_REQUIREMENT: "torch>=2.0.0"
+          FT_TORCH_REQUIREMENT: "torch==${{ needs.resolve.outputs.torch_version }}"
           CMAKE_BUILD_PARALLEL_LEVEL: "2"
         run: |
           python -m build --wheel --no-isolation
@@ -265,13 +335,14 @@ jobs:
           path: dist/*.whl
           if-no-files-found: error
 
+  # ---------------------------------------------------------------------------
+  # Publish to PyPI
+  # ---------------------------------------------------------------------------
   publish-pypi:
     name: Publish to PyPI
     needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
-    if: >-
-      github.event_name == 'push' ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true')
+    if: github.event.inputs.publish == 'true'
     permissions:
       id-token: write
 
