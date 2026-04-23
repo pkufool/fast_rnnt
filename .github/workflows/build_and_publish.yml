@@ -128,15 +128,15 @@ jobs:
         run: |
           # Select GCC version based on CUDA requirements:
           #   CUDA 11.7-11.8 → GCC 11  (gcc-toolset-11)
-          #   CUDA 12.x      → GCC 13  (gcc-toolset-13)
-          #   CUDA 13.x+     → GCC 13  (gcc-toolset-13, may need update)
+          #   CUDA 12.x      → GCC 12  (gcc-toolset-12)
+          #   CUDA 13.x+     → GCC 12  (gcc-toolset-12, may need update)
           cuda_major=$(echo "${CUDA_VER}" | cut -d. -f1)
           cuda_minor=$(echo "${CUDA_VER}" | cut -d. -f2)
 
           if [ "${cuda_major}" -eq 11 ]; then
             ts_ver=11
           else
-            ts_ver=13
+            ts_ver=12
           fi
 
           echo "CUDA ${CUDA_VER} → gcc-toolset-${ts_ver}"
